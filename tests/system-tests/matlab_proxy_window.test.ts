@@ -1,7 +1,21 @@
-import { BrowserContext, Locator, Page, test, expect, chromium} from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 // Tests to check the tools icon clickability and the initial dialog
 test.describe('MATLAB Proxy tests', () => {
+
+    // after each test case, try to check if the status of MATLAB is running
+    test.afterEach(async ({ page }) => {
+        await page.goto('/index.html');
+
+        await page.waitForLoadState();
+        const toolIcon = page.getByRole('button', { name: 'Menu' });
+        await toolIcon.click();
+
+        await page.waitForLoadState();
+
+        const MATLABRunningStatus = page.getByRole('dialog', { name: 'Status Information' });
+        await expect(MATLABRunningStatus.getByText('Running'), 'Wait for MATLAB status to be stopped').toHaveText('Running', { timeout: 120000 });
+    });
 
     // Test to check if the tools icon button is clickable
     test('Test the tools icon button is clicked', async ( {page} )  => {

@@ -1,11 +1,11 @@
 import {Page, test, expect, Locator} from '@playwright/test';
 
 // Tests to check the licensing workflow in the MATLAB Proxy UI
-test.describe('Licensing MATLAB Proxy tests', () => {
+test.describe('MATLAB Proxy tests to check the licensing and start stop workflow', () => {
 
     // after each test case, try to check if the status of MATLAB is running
     test.afterEach(async ({ page }) => {
-        await page.goto('./index.html');
+        await page.goto('/index.html');
 
         await waitForPageLoad(page);
         const toolIcon = page.getByRole('button', { name: 'Menu' });
