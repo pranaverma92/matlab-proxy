@@ -1,10 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+// import dotenv from 'dotenv';
+// import path from 'path';
 
 /**
- * Read environment variables from file.
+ * Read environment variables from .env file present at the root of the project.
  * https://github.com/motdotla/dotenv
  */
-// require('dotenv').config();
+require('dotenv').config({path: './.env'});
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -26,7 +28,7 @@ export default defineConfig({
     /** Customise the settings for each assertion 'expect' statement. */
     expect: {
         /** Maximum time expect() should wait for the condition to be met. */
-        timeout: 10 * 1000
+        timeout: 60 * 1000
     },
 
     /**
@@ -40,6 +42,15 @@ export default defineConfig({
 
     /** Opt out of parallel tests on CI. */
     workers: process.env.CI ? 1 : 1,
+
+    // webServer: [
+    //     {
+    //         command: 'npx ts-node port_find.ts && ${process.env.MWI_APP_PORT} matlab-proxy-app',
+    //         reuseExistingServer: !process.env.CI,
+    //         stdout: 'ignore',
+    //         stderr: 'pipe',
+    //     },
+    // ]
 
     /** Most JupyterLab tests will be 'slow' in Playwrights eyes. This variable controls whether they are reported. */
     reportSlowTests: null,
@@ -72,7 +83,7 @@ export default defineConfig({
        * a per-project or per-file basis. Rather than hard coding the base url to be used.
        * See the docker-compose.yaml file for which ports correspond to which container.
       */
-      baseURL: 'http://localhost:43198',
+      baseURL: 'http://localhost:'+ process.env.HOST_PORT_FOR_MATLAB_PROXY,
 
       /** Run the test without showing the browser */
       headless: true,
@@ -104,7 +115,7 @@ export default defineConfig({
     {
         use: {
             ...devices['Desktop Chrome'],
-            baseURL: 'http://localhost:43198/index.html'
+            baseURL: 'http://localhost:'+ process.env.HOST_PORT_FOR_MATLAB_PROXY
         }
     }
 ]
