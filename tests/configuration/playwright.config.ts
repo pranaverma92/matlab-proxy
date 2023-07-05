@@ -7,7 +7,7 @@ import path from 'path';
  * Read environment variables from .env file present at the root of the project.
  * https://github.com/motdotla/dotenv
  */
-require('dotenv').config();
+require('dotenv').config({ path: path.resolve(__dirname, './.env') });
 
 /**
  * See https://playwright.dev/docs/test-configuration.
