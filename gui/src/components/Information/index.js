@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 The MathWorks, Inc.
+// Copyright (c) 2020-2023 The MathWorks, Inc.
 
 import React, { useRef, useState } from 'react';
 import PropTypes from 'prop-types';
@@ -11,9 +11,9 @@ import {
     selectInformationDetails,
     selectAuthEnabled,
     selectIsAuthenticated,
-    selectAuthToken
+    selectAuthToken,
 } from '../../selectors';
-import { updateAuthStatus } from '../../actionCreators';
+import { updateAuthStatus, getAuthToken } from '../../actionCreators';
 import './Information.css';
 
 function Information({
@@ -39,14 +39,19 @@ function Information({
 
     let info;
     switch (licensingInfo?.type) {
-        case "MHLM":
+        case "mhlm":
             info = {
                 label: `Online License Manager (${licensingInfo.emailAddress})`
             };
             break;
-        case "NLM":
+        case "nlm":
             info = {
                 label: `Network License Manager (${licensingInfo.connectionString})`
+            };
+            break;
+        case "existing_license":            
+            info = {
+                label : 'Existing License'
             };
             break;
         default:
@@ -61,7 +66,7 @@ function Information({
         <div className="error-container alert alert-danger">
             <p><strong>Error</strong></p>
             <Linkify>
-                <div className="error-text">{error.message}</div>
+                <div className="error-text"><pre style={{backgroundColor: 'hsla(0,0%,100%,0)', border: 'none', fontFamily: 'inherit', fontSize: '15px'}}>{error.message}</pre></div>
             </Linkify>
         </div>
     ) : null;
@@ -91,7 +96,11 @@ function Information({
         }
     };
 
-    const viewToken = () => { 
+    const viewToken = () => {
+        // Fetch auth token from server if it is not already available in redux store
+        if (!authToken) {
+            dispatch(getAuthToken());
+        }
         setShowToken(true);
     }
 
@@ -103,7 +112,7 @@ function Information({
         // Update redux state with the token after validation from the backend
         dispatch(updateAuthStatus(token.trim()));
 
-        // Reset local state variable. 
+        // Reset local state variable which was used to hold user's input for token. 
         setToken('');
     }
 

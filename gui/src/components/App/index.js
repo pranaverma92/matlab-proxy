@@ -14,18 +14,22 @@ import Information from '../Information';
 import Help from '../Help';
 import Error from '../Error';
 import {
-    selectOverlayVisible,
-    selectFetchStatusPeriod,
-    selectHasFetchedServerStatus,
-    selectLicensingProvided,
-    selectMatlabUp,
-    selectError,
-    selectLoadUrl,
-    selectIsConnectionError,
-    selectHasFetchedEnvConfig,
-    selectAuthEnabled,
-    selectIsAuthenticated,
-} from '../../selectors';
+  selectOverlayVisible,
+  selectFetchStatusPeriod,
+  selectHasFetchedServerStatus,
+  selectLicensingProvided,
+  selectMatlabUp,
+  selectError,
+  selectLoadUrl,
+  selectIsConnectionError,
+  selectHasFetchedEnvConfig,
+  selectAuthEnabled,
+  selectIsAuthenticated,
+  selectLicensingMhlmHasEntitlements,
+  selectIsEntitled,
+  selectLicensingInfo,
+} from "../../selectors";
+
 import {
     setOverlayVisibility,
     fetchServerStatus,
@@ -33,6 +37,7 @@ import {
     updateAuthStatus,
 } from '../../actionCreators';
 import blurredBackground from './MATLAB-env-blur.png';
+import EntitlementSelector from "../EntitlementSelector";
 
 function App() {
     const dispatch = useDispatch();
@@ -42,12 +47,15 @@ function App() {
     const hasFetchedServerStatus = useSelector(selectHasFetchedServerStatus);
     const hasFetchedEnvConfig = useSelector(selectHasFetchedEnvConfig);
     const licensingProvided = useSelector(selectLicensingProvided);
+    const hasEntitlements = useSelector(selectLicensingMhlmHasEntitlements);
+    const isEntitled = useSelector(selectIsEntitled);
     const matlabUp = useSelector(selectMatlabUp);
     const error = useSelector(selectError);
     const loadUrl = useSelector(selectLoadUrl);
     const isConnectionError = useSelector(selectIsConnectionError);
     const isAuthenticated = useSelector(selectIsAuthenticated)
     const authEnabled = useSelector(selectAuthEnabled);
+    const licensingInfo = useSelector(selectLicensingInfo);
 
     const baseUrl = useMemo(() => {
         const url = document.URL        
@@ -152,6 +160,7 @@ function App() {
     // * Help
     // * Error
     // * License gatherer
+    // * License selector
     // * Status Information
     let overlayContent;   
 
@@ -159,10 +168,14 @@ function App() {
         // TODO Inline confirmation component build
         overlayContent = dialog;
     }    
-    // Give precendence to token auth over licensing info ie. once after token auth is done, show licensing if not provided.
+    // Give precedence to token auth over licensing info ie. once after token auth is done, show licensing if not provided.
     else if((!licensingProvided) && hasFetchedServerStatus && (!authEnabled || isAuthenticated)) {    
         overlayContent = <LicensingGatherer role="licensing" aria-describedby="license-window" />;
     } 
+    // Show license selector if the user has entitlements and is not currently entitled
+    else if (hasEntitlements && !isEntitled) {
+        overlayContent = <EntitlementSelector options={licensingInfo.entitlements} />;
+    }
     // in all other cases, we will either ask for the token, 
     else if (!dialog) {
         overlayContent = (

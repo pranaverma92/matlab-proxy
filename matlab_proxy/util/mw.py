@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 The MathWorks, Inc.
+# Copyright (c) 2020-2023 The MathWorks, Inc.
 
 import asyncio
 import os
@@ -59,7 +59,7 @@ async def fetch_entitlements(mhlm_api_endpoint, access_token, matlab_release):
                 }
             ),
         ) as res:
-            if res.reason != "OK":
+            if not res.ok:
                 raise OnlineLicensingError(
                     f"Communication with {mhlm_api_endpoint} failed ({res.status}). For more details, see {__get_licensing_url()}."
                 )
@@ -69,7 +69,7 @@ async def fetch_entitlements(mhlm_api_endpoint, access_token, matlab_release):
 
             if entitlement_el is None or len(entitlement_el) == 0:
                 raise EntitlementError(
-                    f"Your MathWorks account is not linked to a valid license for MATLAB {matlab_release}."
+                    f"Your MathWorks account is not linked to a valid license for MATLAB {matlab_release}.\nSign out and login with a licensed user."
                 )
 
             entitlements = entitlement_el.findall("entitlement")
@@ -85,7 +85,7 @@ async def fetch_entitlements(mhlm_api_endpoint, access_token, matlab_release):
 
 
 async def fetch_expand_token(mwa_api_endpoint, identity_token, source_id):
-    """Asynchronously fetch tokens from MWA API after MHLM licensing is successful.
+    """Asynchronously fetch tokens from MWA API endpoint.
 
     Args:
         mwa_api_endpoint (String): URL of the MWA API endpoint.
@@ -114,7 +114,7 @@ async def fetch_expand_token(mwa_api_endpoint, identity_token, source_id):
                 }
             ),
         ) as res:
-            if res.reason != "OK":
+            if not res.ok:
                 raise OnlineLicensingError(
                     f"Communication with {mwa_api_endpoint} failed ({res.status}). For more details, see {__get_licensing_url()}."
                 )
@@ -161,7 +161,7 @@ async def fetch_access_token(mwa_api_endpoint, identity_token, source_id):
                 }
             ),
         ) as res:
-            if res.reason != "OK":
+            if not res.ok:
                 raise OnlineLicensingError(
                     f"Communication with {mwa_api_endpoint} failed ({res.status}). For more details, see {__get_licensing_url()}."
                 )
@@ -257,7 +257,7 @@ def parse_other_error(logs):
     )
 
 
-async def create_xvfb_process(xvfb_cmd, pipe, env={}):
+async def create_xvfb_process(xvfb_cmd, pipe, env=None):
     """Creates the Xvfb process.
 
     The Xvfb process is run with '-displayfd' flag set. This makes Xvfb choose an available

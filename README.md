@@ -47,7 +47,7 @@ The MATLAB Proxy is under active development. For support or to report issues, s
 
   $ sudo yum install xorg-x11-server-Xvfb
   ```
-* Python versions: **3.7** | **3.8** | **3.9**  | **3.10**
+* Python versions: **3.8** | **3.9**  | **3.10** | **3.11**
 * [Browser Requirements](https://www.mathworks.com/support/requirements/browser-requirements.html)
 
 * Supported Operating Systems:
@@ -161,6 +161,9 @@ Install the version >=0.5.0 to use the package on MacOS.
 # To upgrade an existing installation of matlab-proxy package:
 $ pip install --upgrade matlab-proxy>=0.5.0
 ```
+
+## Using an already activated MATLAB with matlab-proxy
+`matlab-proxy` version `v0.7.0` introduces support for using an existing MATLAB license. Use the Existing License option only if you have an activated MATLAB. This allows you to start MATLAB without authenticating every time.
 
 ## Limitations
 This package supports the same subset of MATLAB features and commands as MATLAB® Online, except there is no support for Simulink® Online.

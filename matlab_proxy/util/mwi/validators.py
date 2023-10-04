@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 The MathWorks, Inc.
+# Copyright (c) 2020-2023 The MathWorks, Inc.
 """This file contains validators for various runtime artefacts.
 A validator is defined as a function which verifies the input and 
 returns it unchanged if validation passes. 
@@ -12,16 +12,20 @@ Exceptions are thrown to signal failure.
 """
 import errno
 import os
-import socket
-import sys
-
+from pathlib import Path
 import pkg_resources
+import socket
+from typing import List
+
 
 import matlab_proxy
+from matlab_proxy import util
+from matlab_proxy.util import system
+from matlab_proxy.constants import VERSION_INFO_FILE_NAME
 
 from . import environment_variables as mwi_env
-from matlab_proxy.util import system
 from . import logger as mwi_logger
+from .exceptions import MatlabInstallError, FatalError
 
 logger = mwi_logger.get()
 
@@ -57,7 +61,8 @@ def validate_mlm_license_file(nlm_connections_str):
 
     from .exceptions import NetworkLicensingError
 
-    if nlm_connections_str is None:
+    if not nlm_connections_str:
+        # Handles empty strings and None values
         return None
 
     # Regular expression to match port@hostname,
@@ -129,10 +134,9 @@ def validate_app_port_is_free(port):
         return port
     except socket.error as e:
         if e.errno == errno.EADDRINUSE:
-            logger.error(
-                f"The port {port} is not available. Please set another value for the environment variable {mwi_env.get_env_name_app_port()}"
-            )
-            sys.exit(1)
+            error_message = f"The port {port} is not available. Please set another value for the environment variable {mwi_env.get_env_name_app_port()}"
+            logger.error(error_message)
+            raise FatalError(error_message)
         else:
             raise e
 
@@ -156,10 +160,9 @@ def validate_base_url(base_url):
 
     else:
         if not base_url.startswith("/"):
-            logger.error(
-                f'The value of environment variable {mwi_env.get_env_name_base_url()} must start with "/" '
-            )
-            sys.exit(1)
+            error_message = f'The value of environment variable {mwi_env.get_env_name_base_url()} must start with "/" '
+            logger.error(error_message)
+            raise FatalError(error_message)
 
         validated_base_url = base_url[:-1] if base_url.endswith("/") else base_url
 
@@ -189,17 +192,17 @@ def validate_env_config(config):
 
         for key in default_config_keys:
             if not key in env_config:
-                logger.error(f"{key} missing in the provided {config} configuration")
-                sys.exit(1)
+                error_message = f"{key} missing in the provided {config} configuration"
+                logger.error(error_message)
+                raise FatalError(error_message)
 
         logger.debug(f"Successfully validated provided {config} configuration")
         return env_config
 
     else:
-        logger.error(
-            f"{config} is not a valid config. Available configs are : {list(available_configs.keys())}"
-        )
-        sys.exit(1)
+        error_message = f"{config} is not a valid config. Available configs are : {list(available_configs.keys())}"
+        logger.error(error_message)
+        raise FatalError(error_message)
 
 
 def __get_configs():
@@ -226,8 +229,9 @@ def validate_ssl_cert_file(a_ssl_cert_file):
     if a_ssl_cert_file:
         # String is not empty, check to see if the file exists
         if not os.path.isfile(a_ssl_cert_file):
-            logger.error(f"MWI_SSL_CERT_FILE is not a valid file: {a_ssl_cert_file}")
-            sys.exit(1)
+            error_message = f"MWI_SSL_CERT_FILE is not a valid file: {a_ssl_cert_file}"
+            logger.error(error_message)
+            raise FatalError(error_message)
 
     # string is either empty, or is a valid file on disk
     return a_ssl_cert_file
@@ -246,8 +250,11 @@ def validate_ssl_key_and_cert_file(a_ssl_key_file, a_ssl_cert_file):
     cert_file = validate_ssl_cert_file(a_ssl_cert_file=a_ssl_cert_file)
 
     if cert_file is None and a_ssl_key_file is not None:
-        logger.error(f"MWI_SSL_CERT_FILE must be provided to use the MWI_SSL_KEY_FILE")
-        sys.exit(1)
+        error_message = (
+            f"MWI_SSL_CERT_FILE must be provided to use the MWI_SSL_KEY_FILE"
+        )
+        logger.error(error_message)
+        raise FatalError(error_message)
 
     if a_ssl_key_file is None and cert_file is not None:
         logger.info(
@@ -256,10 +263,89 @@ def validate_ssl_key_and_cert_file(a_ssl_key_file, a_ssl_cert_file):
 
     if a_ssl_key_file:
         if not os.path.isfile(a_ssl_key_file):
-            logger.error(f"MWI_SSL_KEY_FILE is not a valid file: {a_ssl_key_file}")
-            sys.exit(1)
+            error_message = f"MWI_SSL_KEY_FILE is not a valid file: {a_ssl_key_file}"
+            logger.error(error_message)
+            raise FatalError(error_message)
 
     logger.info(
         f"SSL Keys provided were: MWI_SSL_CERT_FILE: {a_ssl_cert_file} & MWI_SSL_KEY_FILE: {a_ssl_key_file}"
     )
     return a_ssl_key_file, a_ssl_cert_file
+
+
+def validate_use_existing_licensing(use_existing_license):
+    """Returns true if use_existing_license is true
+
+    Args:
+        use_existing_license (str): value from the environment variable MWI_USE_EXISTING_LICENSE
+
+    Returns:
+        bool: if use_existing_license is set to true
+    """
+    return True if use_existing_license.casefold() == "true" else False
+
+
+def __validate_if_paths_exist(paths: List[Path]):
+    """Validates if  paths of directories or files exists on the file system.
+
+    Args:
+        paths ([pathlib.Path]): List of pathlib.Path's to directories or files
+
+    Raises:
+        OSError: When an invalid path is supplied
+
+    Returns:
+        [pathlib.Path] | None: [pathlib.Path] if valid paths are supplied else None
+    """
+    for path in paths:
+        if not util.is_valid_path(path):
+            raise OSError(f"Supplied invalid path:{path}")
+
+    return paths
+
+
+def terminate_on_invalid_matlab_root_path(
+    matlab_root: Path, is_custom_matlab_root: bool
+):
+    """Validate if path supplied is MATLAB_ROOT by checking for the existence of VersionInfo.xml file
+    at matlab_root
+
+    Args:
+        path (pathlib.Path): path to MATLAB root
+
+    Returns:
+        pathlib.Path | None: pathlib.Path if a valid path to MATLAB root is supplied else None
+
+    Raises:
+        MatlabInstallError
+    """
+    error_string = f"""Unable to find MATLAB at: {matlab_root}"""
+
+    if is_custom_matlab_root:
+        error_string += f"""\nEdit the environment variable {mwi_env.get_env_name_custom_matlab_root()} to the correct path, and restart matlab-proxy."""
+    else:
+        error_string += f"\nUpdate your system PATH, and restart matlab-proxy."
+
+    #  Check your system PATH, or the value in environment variable {mwi_env.get_env_name_custom_matlab_root()}.
+    #  Restart matlab-proxy after fixing the issue, to continue."""
+    try:
+        matlab_root = matlab_root
+        __validate_if_paths_exist([matlab_root])
+        logger.debug(
+            f"Specified MATLAB root path:{matlab_root} exists, continuing to verify its validity..."
+        )
+    except OSError as exc:
+        logger.error(". ".join(exc.args))
+        raise MatlabInstallError(error_string)
+
+    version_info_file_path = matlab_root / VERSION_INFO_FILE_NAME
+
+    if not version_info_file_path.is_file():
+        log_error_string = (
+            error_string
+            + f"Failed to locate {VERSION_INFO_FILE_NAME} at this location."
+        )
+        logger.error(log_error_string)
+        raise MatlabInstallError(error_string)
+
+    return matlab_root

@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 The MathWorks, Inc.
+// Copyright (c) 2020-2023 The MathWorks, Inc.
 
 import { createSelector } from 'reselect';
 
@@ -42,11 +42,6 @@ export const selectMatlabUp = createSelector(
     matlabStatus => matlabStatus === 'up'
 );
 
-export const selectMatlabRunning = createSelector(
-    selectMatlabStatus,
-    matlabStatus => matlabStatus === 'up'
-);
-
 export const selectMatlabStarting = createSelector(
     selectMatlabStatus,
     matlabStatus => matlabStatus === 'starting'
@@ -55,6 +50,11 @@ export const selectMatlabStarting = createSelector(
 export const selectMatlabStopping = createSelector(
     selectMatlabStatus,
     matlabStatus => matlabStatus === 'stopping'
+);
+
+export const selectMatlabDown = createSelector(
+    selectMatlabStatus,
+    matlabStatus => matlabStatus === 'down'
 );
 
 export const selectOverlayHidable = createSelector(
@@ -102,7 +102,7 @@ export const selectLicensingProvided = createSelector(
 export const selectLicensingIsMhlm = createSelector(
     selectLicensingInfo,
     selectLicensingProvided,
-    (licensingInfo, licensingProvided) => licensingProvided && licensingInfo.type === 'MHLM'
+    (licensingInfo, licensingProvided) => licensingProvided && licensingInfo.type === 'mhlm'
 );
 
 export const selectLicensingMhlmUsername = createSelector(
@@ -111,8 +111,21 @@ export const selectLicensingMhlmUsername = createSelector(
     (licensingInfo, isMhlm) => isMhlm ? licensingInfo.emailAddress : ''
 );
 
+// Selector to check if the license type is mhlm and entitlements property is not empty
+export const selectLicensingMhlmHasEntitlements = createSelector(
+    selectLicensingIsMhlm,
+    selectLicensingInfo,
+    (isMhlm, licensingInfo) => isMhlm && licensingInfo.entitlements && licensingInfo.entitlements.length > 0
+);
+
+export const selectIsEntitled = createSelector(
+    selectLicensingInfo,
+    selectLicensingMhlmHasEntitlements,
+    (licensingInfo, entitlementIdInfo) => entitlementIdInfo && licensingInfo.entitlementId
+);
+
 // TODO Are these overkill? Perhaps just selecting status would be enough
-// TODO Could be used for detected intermedia failures, such as server being
+// TODO Could be used for detected intermediate failures, such as server being
 // temporarily inaccessible
 export const selectMatlabPending = createSelector(
     selectMatlabStatus,
@@ -129,9 +142,9 @@ export const selectIsInvalidTokenError = createSelector(
     selectAuthEnabled,
     selectIsAuthenticated,
     selectIsError,
-    selectError,     
-    (authEnabled, isAuthenticated, isError, error) => {        
-        if ((authEnabled && !isAuthenticated) &&  isError && error.type === "InvalidTokenError"){
+    selectError,
+    (authEnabled, isAuthenticated, isError, error) => {
+        if ((authEnabled && !isAuthenticated) && isError && error.type === "InvalidTokenError") {
             return true
         }
         return false
@@ -142,7 +155,7 @@ export const selectInformationDetails = createSelector(
     selectMatlabStatus,
     selectIsError,
     selectError,
-    selectAuthEnabled,  
+    selectAuthEnabled,
     selectIsInvalidTokenError,
     (matlabStatus, isError, error, authEnabled, isInvalidTokenError) => {
         // Check for any errors on the front-end 
@@ -153,9 +166,9 @@ export const selectInformationDetails = createSelector(
                 alert: 'warning',
                 label: 'Unknown',
             }
-        }        
+        }
 
-        if(isError && authEnabled && isInvalidTokenError) {
+        if (isError && authEnabled && isInvalidTokenError) {
             return {
                 icon: 'warning',
                 alert: 'warning',

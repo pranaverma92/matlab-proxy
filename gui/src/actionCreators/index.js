@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 The MathWorks, Inc.
+// Copyright (c) 2020-2023 The MathWorks, Inc.
 
 import {
     SET_TRIGGER_POSITION,
@@ -7,30 +7,33 @@ import {
     REQUEST_SERVER_STATUS,
     RECEIVE_SERVER_STATUS,
     REQUEST_SET_LICENSING,
+    REQUEST_UPDATE_LICENSING,
     REQUEST_TERMINATE_INTEGRATION,
     REQUEST_STOP_MATLAB,
     REQUEST_START_MATLAB,
     REQUEST_ENV_CONFIG,
     RECEIVE_SET_LICENSING,
+    RECEIVE_UPDATE_LICENSING,
     RECEIVE_TERMINATE_INTEGRATION,
     RECEIVE_STOP_MATLAB,
     RECEIVE_START_MATLAB,
     RECEIVE_ERROR,
     RECEIVE_ENV_CONFIG,
     SET_AUTH_STATUS,
-    SET_AUTH_TOKEN    
+    SET_AUTH_TOKEN
 } from '../actions';
 import { selectMatlabPending } from '../selectors';
+import sha256 from 'crypto-js/sha256';
 
-export function setAuthStatus(authInfo){
+export function setAuthStatus(authInfo) {
     return {
         type: SET_AUTH_STATUS,
         authInfo
     }
 }
 
-export function setAuthToken(authInfo){
-    return{
+export function setAuthToken(authInfo) {
+    return {
         type: SET_AUTH_TOKEN,
         authInfo
     }
@@ -99,6 +102,20 @@ export function receiveSetLicensing(status) {
         status
     };
 }
+
+export function requestUpdateLicensing() {
+    return {
+        type: REQUEST_UPDATE_LICENSING,
+    };
+}
+
+export function receiveUpdateLicensing(status) {
+    return {
+        type: RECEIVE_UPDATE_LICENSING,
+        status
+    };
+}
+
 
 export function requestTerminateIntegration() {
     return {
@@ -193,26 +210,37 @@ export function fetchEnvConfig() {
         dispatch(requestEnvConfig());
         const response = await fetchWithTimeout(dispatch, './get_env_config', {}, 10000);
         const data = await response.json();
-        dispatch(receiveEnvConfig(data));       
+        dispatch(receiveEnvConfig(data));
     };
 }
 
-export function updateAuthStatus(token){
+export function updateAuthStatus(token) {
     // make response consistent with rest of reducers (data)
-    return async function(dispatch, getState){
-        
+    return async function (dispatch, getState) {
+
+        const tokenHash = sha256(token)
         const options = {
             method: 'POST',
             headers: {
-                'Accept': 'application/text',
-                'Content-Type': 'application/text'
-                },
-            body: token
+                'mwi_auth_token': tokenHash
+            },
         };
-        const response = await fetchWithTimeout(dispatch, './authenticate_request', options, 15000);
+        const response = await fetchWithTimeout(dispatch, './authenticate', options, 15000);
         const data = await response.json()
 
         dispatch(setAuthStatus(data))
+    }
+}
+
+export function getAuthToken() {
+    // make response consistent with rest of reducers (data)
+    return async function (dispatch, getState) {
+
+        const options = {
+            method: 'GET'
+        };
+        const response = await fetchWithTimeout(dispatch, './get_auth_token', options, 10000);
+        const data = await response.json()
         dispatch(setAuthToken(data))
     }
 }
@@ -236,6 +264,27 @@ export function fetchSetLicensing(info) {
         const data = await response.json();
         dispatch(receiveSetLicensing(data));
 
+    }
+}
+
+export function fetchUpdateLicensing(info) {
+    return async function (dispatch, getState) {
+
+        const options = {
+            method: 'PUT',
+            mode: 'same-origin',
+            cache: 'no-cache',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(info),
+        }
+
+        dispatch(requestUpdateLicensing());
+        const response = await fetchWithTimeout(dispatch, './update_entitlement', options, 1500);
+        const data = await response.json();
+        dispatch(receiveUpdateLicensing(data));
     }
 }
 
@@ -286,7 +335,7 @@ export function fetchStopMatlab() {
         }
 
         dispatch(requestStopMatlab());
-        const response = await fetchWithTimeout(dispatch, './stop_matlab', options, 15000);
+        const response = await fetchWithTimeout(dispatch, './stop_matlab', options, 30000);
         const data = await response.json();
         dispatch(receiveStopMatlab(data));
 
