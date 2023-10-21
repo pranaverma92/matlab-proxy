@@ -41,7 +41,8 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
         await unsetMatlabLicensing(page);
 
         // License MATLAB back using Online licensing
-        await setMatlabLicensingInJsdUsingOnlineLicensing(page);
+        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'dockeruser@mwcloudtest.com', 'CPIPassw0rd!');
+        await verifyLicensingSuccessful(page);
     });
 
     // Test to check the "Restart MATLAB" button in the tools icon is abel to restart MATLAB
@@ -54,7 +55,6 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
         await waitForButtonAndClick(page, 'startMatlabBtn', 'Restart MATLAB button should be visible');
 
         // Presses the confirm button while restarting MATLAB
-        // await clickTheConfirmButton(page);
         await waitForButtonAndClick(page, 'confirmButton', 'Wait for Confirm button');
 
         // Cliks the Tool Icon button
@@ -63,6 +63,18 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
         // Checks the status of MATLAB to be running
         const MATLABRunningStatus = await getTheStatusOFMATLAB(page);
         await expect(MATLABRunningStatus.getByText('Running'), 'Wait for MATLAB status to be stopped').toHaveText('Running', { timeout: 120000 });
+    });
+
+    test('Test to check if prompt appears for invalid usr credentials', async({page}) => {
+        await page.goto("/index.html");
+        await unsetMatlabLicensing(page);
+        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'mckeruser@mwcloudtest.com', 'CPIPassw0rd!');
+        const invalidText = page.frameLocator('#loginframe').locator('#errorMessage');
+        await expect(invalidText).toHaveText('Invalid Email or Password');
+        const invalidEmail = page.frameLocator('#loginframe').locator('#emailUpdate');
+        await invalidEmail.click();
+        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'dockeruser@mwcloudtest.com', 'CPIPassw0rd!');
+        await verifyLicensingSuccessful(page);
     });
 
     // Test to check MATLAB Proxy is able to license using the local licensing
@@ -78,6 +90,8 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
         const startMATLABButton = signInDialog.getByRole('button', { name: 'Start MATLAB' });
         await startMATLABButton.click();
     });
+
+
 
     // Test to check if the user is able to Sign Out and Sign In back again using the license manager in the tools icon
     // This test's workflow would need to change since the old workflow of 1@license will no longer work
@@ -138,22 +152,29 @@ async function setMatlabLicensingInJsdUsingLicenseManager(matlabJsdPage: Page) {
 }
 
 // Sets MATLAB licensing in JSD using the Online Licensing option
-async function setMatlabLicensingInJsdUsingOnlineLicensing(matlabJsdPage: Page) {
+async function setMatlabLicensingInJsdUsingOnlineLicensing(matlabJsdPage: Page, username: string, password: string) {
     await waitForPageLoad(matlabJsdPage);
 
     // Fills in the email textbox and presses Enter
     const emailTextbox = matlabJsdPage.frameLocator('#loginframe').locator('#userId');
     await expect(emailTextbox, 'Wait for email ID textbox to appear').toBeVisible();
-    await emailTextbox.fill('dockeruser@mwcloudtest.com');
+
+    // This fill is added to makesure that the email input area is blank before entering the username
+    await emailTextbox.fill('');
+
+    // Fills in the username in the input
+    await emailTextbox.fill(username);
     await emailTextbox.press('Enter');
 
     // Fills in the password textbox and presses Enter multiple times
     const passwordTextbox = matlabJsdPage.frameLocator('#loginframe').locator('#password');
     await expect(passwordTextbox, 'Wait for password textbox to appear').toBeVisible();
-    await passwordTextbox.fill('CPIPassw0rd!');
+    await passwordTextbox.fill(password);
     await passwordTextbox.press('Enter');
-    await passwordTextbox.press('Enter');
+    // await passwordTextbox.press('Enter');
+}
 
+async function verifyLicensingSuccessful(matlabJsdPage: Page){
     // Verifies if licensing is successful by checking the status information
     const statusInfo = matlabJsdPage.getByText('Status Information');
     await expect(statusInfo, 'Verify if Licensing is successful').toBeVisible();
@@ -171,7 +192,6 @@ async function unsetMatlabLicensing(matlabJsdPage: Page) {
     await waitForButtonAndClick(statusInfo, 'unsetLicensingBtn', 'Wait for Unset MATLAB Licensing button');
 
     // Confirms the action by clicking the Confirm button
-    // await clickTheConfirmButton(matlabJsdPage);
 
     await waitForButtonAndClick(matlabJsdPage, 'confirmButton', 'Wait for Confirm button');
     await waitForPageLoad(matlabJsdPage);
@@ -188,7 +208,6 @@ async function startMatlabSession(matlabJsdPage: Page) {
     await waitForButtonAndClick(statusInfo, 'startMatlabBtn', 'Wait for Stop MATLAB Session button');
 
     // Confirms the action by clicking the Confirm button with a longer timeout
-    // await clickTheConfirmButton(matlabJsdPage);
     await waitForButtonAndClick(matlabJsdPage, 'confirmButton', 'Wait for Confirm button');
 }
 
@@ -206,6 +225,5 @@ async function stopMatlabSession(matlabJsdPage: Page) {
     await waitForButtonAndClick(statusInfo, 'stopMatlabBtn', 'Stop MATLAB Session');
 
     // Confirms the action by clicking the Confirm button
-    // await clickTheConfirmButton(matlabJsdPage);
     await waitForButtonAndClick(matlabJsdPage, 'confirmButton', 'Wait for Confirm button');
 }
