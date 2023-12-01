@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2023 The MathWorks, Inc.
+# Copyright 2020-2023 The MathWorks, Inc.
 
 import asyncio
 import json
@@ -104,12 +104,10 @@ async def create_status_response(app, loadUrl=None):
         JSONResponse: A JSONResponse object containing the generic state of the server, MATLAB and MATLAB Licensing.
     """
     state = app["state"]
-
     return web.json_response(
         {
             "matlab": {
                 "status": await state.get_matlab_state(),
-                "version": state.settings.get("matlab_version", "Unknown"),
             },
             "licensing": marshal_licensing_info(state.licensing),
             "loadUrl": loadUrl,
@@ -470,6 +468,14 @@ async def matlab_view(req):
     matlab_protocol = req.app["settings"]["matlab_protocol"]
     mwapikey = req.app["settings"]["mwapikey"]
     matlab_base_url = f"{matlab_protocol}://127.0.0.1:{matlab_port}"
+
+    # If we are trying to send request to matlab while the matlab_port is still not assigned
+    # by embedded connector, return service not available and log a message
+    if not matlab_port:
+        logger.debug(
+            "MATLAB hasn't fully started, please retry after embedded connector has started"
+        )
+        raise web.HTTPServiceUnavailable()
 
     # WebSocket
     # According to according to RFC6455 (https://www.rfc-editor.org/rfc/rfc6455.html)

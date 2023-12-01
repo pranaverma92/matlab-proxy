@@ -1,11 +1,12 @@
-# Copyright (c) 2020-2023 The MathWorks, Inc.
+# Copyright 2020-2023 The MathWorks, Inc.
 
 import os
 import time
+import tempfile
 
 import matlab_proxy
 import matlab_proxy.settings as settings
-from matlab_proxy.constants import VERSION_INFO_FILE_NAME
+from matlab_proxy.constants import VERSION_INFO_FILE_NAME, DEFAULT_PROCESS_START_TIMEOUT
 from pathlib import Path
 import pytest
 from matlab_proxy.util.mwi import environment_variables as mwi_env
@@ -291,3 +292,84 @@ def test_get_mw_context_tags(monkeypatch):
     actual_result = settings.get_mw_context_tags(extension_name)
 
     assert expected_result == actual_result
+
+
+@pytest.mark.parametrize(
+    "timeout_value",
+    [
+        (130, 130),
+        ("asdf", DEFAULT_PROCESS_START_TIMEOUT),
+        (120.5, DEFAULT_PROCESS_START_TIMEOUT),
+        (None, DEFAULT_PROCESS_START_TIMEOUT),
+    ],
+    ids=["Valid number", "Invalid number", "Valid decimal number", "No value supplied"],
+)
+def test_get_process_timeout(timeout_value, monkeypatch):
+    """Parameterized test to check settings.test_get_process_timeout returns the correct timeout value when MWI_PROCESS_STARTUP_TIMEOUT is set.
+
+    Args:
+        timeout (str): Timeout for processes launched by matlab-proxy
+        monkeypatch (Builtin pytest fixture): Pytest fixture to monkeypatch environment variables.
+    """
+    # Arrange
+    supplied_timeout, expected_timeout = timeout_value[0], timeout_value[1]
+
+    # pytest would throw warnings if None is supplied to monkeypatch
+    if supplied_timeout:
+        monkeypatch.setenv(
+            mwi_env.get_env_name_process_startup_timeout(), str(supplied_timeout)
+        )
+
+    # Act
+    actual_timeout = settings.get_process_startup_timeout()
+
+    # Assert
+    assert expected_timeout == actual_timeout
+
+
+def test_get_mwi_config_folder_dev():
+    ## Arrange
+    expected_config_dir = Path(tempfile.gettempdir()) / "MWI" / "tests"
+
+    # Act
+    actual_config_dir = settings.get_mwi_config_folder(dev=True)
+
+    # Assert
+    assert expected_config_dir == actual_config_dir
+
+
+@pytest.mark.parametrize(
+    "hostname, home, expected_mwi_config_dir",
+    [
+        (
+            "bob",
+            Path("/home/bob"),
+            Path("/home/bob") / ".matlab" / "MWI" / "hosts" / "bob",
+        ),
+        (
+            "bob",
+            Path("/home/CommonProject"),
+            Path("/home/CommonProject") / ".matlab" / "MWI" / "hosts" / "bob",
+        ),
+        (
+            None,
+            Path("/home/CommonProject"),
+            Path("/home/CommonProject") / ".matlab" / "MWI",
+        ),
+    ],
+    ids=[
+        "Single host machine with unique $HOME per host",
+        "Multi-host machine with common $HOME for multiple hosts",
+        "default directory when hostname is missing",
+    ],
+)
+def test_get_mwi_config_folder(mocker, hostname, home, expected_mwi_config_dir):
+    # Arrange
+    mocker.patch("matlab_proxy.settings.Path.home", return_value=home)
+    mocker.patch("matlab_proxy.settings.socket.gethostname", return_value=hostname)
+
+    # Act
+    actual_config_dir = settings.get_mwi_config_folder()
+
+    # Assert
+    assert expected_mwi_config_dir == actual_config_dir

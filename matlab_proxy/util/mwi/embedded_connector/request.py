@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022 The MathWorks, Inc.
+# Copyright 2020-2023 The MathWorks, Inc.
 
 """ 
 This file contains the methods to communicate with the embedded connector.
@@ -104,7 +104,10 @@ async def get_state(mwi_server_url, headers=None):
 
         if not resp["messages"]["PingResponse"][0]["messageFaults"]:
             return "up"
-    except Exception:
+    except Exception as err:
+        logger.debug(
+            f"{err}: Embbeded connector is currently not responding to ping requests."
+        )
         pass
 
     return "down"

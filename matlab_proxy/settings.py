@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2023 The MathWorks, Inc.
+# Copyright 2020-2023 The MathWorks, Inc.
 
 from pathlib import Path
 import os
@@ -10,7 +10,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 import matlab_proxy
-from matlab_proxy.constants import VERSION_INFO_FILE_NAME
+from matlab_proxy import constants
 from matlab_proxy.util import mwi, system
 from matlab_proxy.util.mwi import environment_variables as mwi_env
 from matlab_proxy.util.mwi import token_auth
@@ -21,6 +21,35 @@ from matlab_proxy.util.mwi.exceptions import (
 )
 
 logger = mwi.logger.get()
+
+
+def get_process_startup_timeout():
+    """Returns the timeout for a process launched by matlab-proxy as specified by MWI_PROCESS_START_TIMEOUT environment variable
+    if valid, else returns the default value.
+
+    Returns:
+        int: timeout for a process launched by matlab-proxy
+    """
+    custom_startup_timeout = os.getenv(mwi_env.get_env_name_process_startup_timeout())
+
+    if custom_startup_timeout:
+        if custom_startup_timeout.isdigit():
+            logger.info(
+                f"Using custom process startup timeout {custom_startup_timeout} seconds"
+            )
+            return int(custom_startup_timeout)
+
+        else:
+            logger.warn(
+                f"The value set for {mwi_env.get_env_name_process_startup_timeout()}:{custom_startup_timeout} is not a number. Using {constants.DEFAULT_PROCESS_START_TIMEOUT} as the default value"
+            )
+            return constants.DEFAULT_PROCESS_START_TIMEOUT
+
+    logger.info(
+        f"Using {constants.DEFAULT_PROCESS_START_TIMEOUT} seconds as the default timeout value"
+    )
+
+    return constants.DEFAULT_PROCESS_START_TIMEOUT
 
 
 def get_matlab_executable_and_root_path():
@@ -38,7 +67,7 @@ def get_matlab_executable_and_root_path():
         matlab_root_path = Path(custom_matlab_root_path)
 
         # Terminate process if invalid Custom Path was provided!
-        mwi.validators.terminate_on_invalid_matlab_root_path(
+        mwi.validators.validate_matlab_root_path(
             matlab_root_path, is_custom_matlab_root=True
         )
 
@@ -57,18 +86,15 @@ def get_matlab_executable_and_root_path():
 
     if matlab_executable_path:
         matlab_root_path = Path(matlab_executable_path).resolve().parent.parent
-        mwi.validators.terminate_on_invalid_matlab_root_path(
+        logger.info(f"Found MATLAB executable at: {matlab_executable_path}")
+        matlab_root_path = mwi.validators.validate_matlab_root_path(
             matlab_root_path, is_custom_matlab_root=False
-        )
-        logger.info(
-            f"Found MATLAB Executable: {matlab_executable_path} with Root: {matlab_root_path}"
         )
         return matlab_executable_path, matlab_root_path
 
     # Control only gets here if custom matlab root was not set AND which matlab returned no results.
     # Note, error messages are formatted as multi-line strings and the front end displays them as is.
-    error_message = f"""Unable to find MATLAB on the system PATH.
-Add MATLAB to the system PATH, and restart matlab-proxy."""
+    error_message = "Unable to find MATLAB on the system PATH. Add MATLAB to the system PATH, and restart matlab-proxy."
 
     logger.info(error_message)
     raise MatlabInstallError(error_message)
@@ -86,7 +112,10 @@ def get_matlab_version(matlab_root_path):
     if matlab_root_path is None:
         return None
 
-    version_info_file_path = Path(matlab_root_path) / VERSION_INFO_FILE_NAME
+    version_info_file_path = Path(matlab_root_path) / constants.VERSION_INFO_FILE_NAME
+    if not version_info_file_path.exists():
+        return None
+
     tree = ET.parse(version_info_file_path)
     root = tree.getroot()
 
@@ -103,8 +132,22 @@ def get_ws_env_settings():
 def get_mwi_config_folder(dev=False):
     if dev:
         return get_test_temp_dir()
+
     else:
-        return Path.home() / ".matlab" / "MWI"
+        config_folder_path = Path.home() / ".matlab" / "MWI"
+        # In multi-host environments, Path.home() can be the same for
+        # multiple hosts and can cause issues when different hosts launch
+        # matlab-proxy on the same port.
+        # Using hostname to be part of the path of the config folder would avoid collisions.
+        hostname = socket.gethostname()
+        if hostname:
+            config_folder_path = config_folder_path / "hosts" / hostname
+
+        logger.debug(
+            f"{'Hostname could not be determined. ' if not hostname else '' }Using the folder: {config_folder_path} for storing all matlab-proxy related session information"
+        )
+
+        return config_folder_path
 
 
 def get_mwi_logs_root_dir(dev=False):
@@ -240,6 +283,10 @@ def get_server_settings(config_name):
         os.getenv(mwi_env.get_env_name_ssl_key_file(), None),
         os.getenv(mwi_env.get_env_name_ssl_cert_file(), None),
     )
+
+    # log file validation check is already done in logger.py
+    mwi_log_file = os.getenv(mwi_env.get_env_name_log_file(), None)
+
     return {
         "create_xvfb_cmd": create_xvfb_cmd,
         "base_url": mwi.validators.validate_base_url(
@@ -259,6 +306,7 @@ def get_server_settings(config_name):
         # This directory will be used to store connector.securePort(matlab_ready_file) and its corresponding files. This will be
         # a central place to store logs of all the running instances of MATLAB launched by matlab-proxy
         "mwi_logs_root_dir": get_mwi_logs_root_dir(),
+        "mwi_log_file": mwi_log_file,
         "mw_context_tags": get_mw_context_tags(config_name),
         # The url where the matlab-proxy server is accessible at
         "mwi_server_url": None,
@@ -308,9 +356,22 @@ def get_matlab_settings():
         else ["-nodesktop"]
     )
     matlab_startup_file = str(Path(__file__).resolve().parent / "matlab" / "startup.m")
+
+    matlab_version = get_matlab_version(matlab_root_path)
+
+    # If the matlab on system PATH is a wrapper script, then it would not be possible to determine MATLAB root (inturn not being able to determine MATLAB version)
+    # unless MWI_CUSTOM_MATLAB_ROOT is set. Raising only a warning as the matlab version is only required for communicating with MHLM.
+    if not matlab_version:
+        logger.warn(
+            f"Could not determine MATLAB version from MATLAB root path: {matlab_root_path}"
+        )
+        logger.warn(
+            f"Set {mwi_env.get_env_name_custom_matlab_root()} to a valid MATLAB root path"
+        )
+
     return {
         "matlab_path": matlab_root_path,
-        "matlab_version": get_matlab_version(matlab_root_path),
+        "matlab_version": matlab_version,
         "matlab_cmd": [
             matlab_executable_path,
             "-nosplash",

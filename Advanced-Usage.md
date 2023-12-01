@@ -1,5 +1,4 @@
 # Advanced Usage
-Copyright (c) 2020-2023 The MathWorks, Inc. All rights reserved.
 
 This page lists some of the advanced manuevers that may be of specific interest to help configure the package for use in your environment.
 
@@ -30,6 +29,7 @@ The following table describes all the environment variables that you can set to 
 | **MWI_AUTH_TOKEN** | string (optional) | `"AnyURLSafeToken"` | Specify a custom `token` for matlab-proxy to use with [Token-Based Authentication](./SECURITY.md#token-based-authentication). A token can safely contain any combination of alpha numeric text along with the following permitted characters: `- .  _  ~`.<br />When absent matlab-proxy will generate a random URL safe token. |
 | **MWI_USE_EXISTING_LICENSE** | string (optional) | `"True"` | When set to True, matlab-proxy will not ask you for additional licensing information and will try to launch an already activated MATLAB on your system PATH.
 | **MWI_CUSTOM_MATLAB_ROOT** | string (optional) | `"/path/to/matlab/root/"` | Optionally, provide a custom path to MATLAB root. For more information see [Adding MATLAB to System Path](#adding-matlab-to-system-path) |
+| **MWI_PROCESS_START_TIMEOUT** | integer (optional) | `1234` |  This field controls the time (in seconds) for which `matlab-proxy` waits for the processes it spins up, viz: MATLAB & Xvfb, to respond. By default, this value is `600 seconds`. A timeout could either indicate an issue with the spawned processes or be a symptom of a resource-constrained environment. Increase this value if your environment needs more time for the spawned processes to start.|
 
 ## Adding MATLAB to System Path
 
@@ -96,3 +96,9 @@ If you add the `frame-ancestors` directive, the browser does not block the conte
 For more information about `Content-Security-Policy` header,  check the [Mozilla developer docs for Content-Security-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy).
 
 **NOTE**: Setting custom HTTP headers is an advanced operation, only use this functionality if you are familiar with HTTP headers.
+
+----
+
+Copyright 2020-2023 The MathWorks, Inc.
+
+----

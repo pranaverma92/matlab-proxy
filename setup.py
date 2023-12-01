@@ -56,6 +56,9 @@ TESTS_REQUIRES = [
     "pytest-mock",
     "pytest-aiohttp",
     "psutil",
+    "urllib3",
+    "requests",
+    "pytest-playwright",
 ]
 
 INSTALL_REQUIRES = ["aiohttp>=3.7.4", "psutil", "aiohttp_session[secure]"]
@@ -65,7 +68,7 @@ long_description = (HERE / "README.md").read_text()
 
 setuptools.setup(
     name="matlab-proxy",
-    version="0.8.0",
+    version="0.10.0",
     url=config["doc_url"],
     author="The MathWorks, Inc.",
     author_email="cloud@mathworks.com",

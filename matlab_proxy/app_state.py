@@ -1,14 +1,24 @@
-# Copyright (c) 2020-2023 The MathWorks, Inc.
+# Copyright 2020-2023 The MathWorks, Inc.
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from typing import Final, Optional
 
 from matlab_proxy import util
+from matlab_proxy.settings import (
+    get_process_startup_timeout,
+)
+from matlab_proxy.constants import (
+    CONNECTOR_SECUREPORT_FILENAME,
+    MATLAB_LOGS_FILE_NAME,
+    VERSION_INFO_FILE_NAME,
+)
 from matlab_proxy.util import mw, mwi, system, windows
 from matlab_proxy.util.mwi import environment_variables as mwi_env
 from matlab_proxy.util.mwi import token_auth
@@ -20,9 +30,10 @@ from matlab_proxy.util.mwi.exceptions import (
     MatlabError,
     OnlineLicensingError,
     XvfbError,
+    UIVisibleFatalError,
     log_error,
 )
-from matlab_proxy.constants import CONNECTOR_SECUREPORT_FILENAME
+
 
 logger = mwi.logger.get()
 
@@ -33,10 +44,7 @@ class AppState:
     """
 
     # Constants that are applicable to AppState class
-    MATLAB_PORT_CHECK_DELAY_IN_SECONDS = 1
-    # The maximum amount of time in seconds the Embedded Connector can take
-    # for launching, before the matlab-proxy server concludes that something is wrong.
-    EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS = 120
+    MATLAB_PORT_CHECK_DELAY_IN_SECONDS: Final[int] = 1
 
     def __init__(self, settings):
         """Parameterized constructor for the AppState class.
@@ -47,6 +55,9 @@ class AppState:
         """
         self.settings = settings
         self.processes = {"matlab": None, "xvfb": None}
+
+        # Timeout for processes launched by matlab-proxy
+        self.PROCESS_TIMEOUT = get_process_startup_timeout()
 
         # The port on which MATLAB(launched by this matlab-proxy process) starts on.
         self.matlab_port = None
@@ -224,64 +235,91 @@ class AppState:
         Returns:
             String: Status of MATLAB. Returns either up, down or starting.
         """
-
         # MATLAB can either be "up", "starting" or "down" state depending upon Xvfb, MATLAB and the Embedded Connector
-        matlab = self.processes["matlab"]
-        xvfb = self.processes["xvfb"]
-
-        if system.is_linux():
-            if xvfb is None or xvfb.returncode is not None:
-                logger.debug(
-                    "Xvfb has not started"
-                    if xvfb is None
-                    else f"Xvfb exited with returncode:{xvfb.returncode}"
-                )
-                return "down"
-
-            if matlab is None or matlab.returncode is not None:
-                logger.debug(
-                    "MATLAB has not started"
-                    if matlab is None
-                    else f"MATLAB exited with returncode:{matlab.returncode}"
-                )
-                return "down"
-
-        elif system.is_mac():
-            if matlab is None or matlab.returncode is not None:
-                logger.debug(
-                    "MATLAB has not started"
-                    if matlab is None
-                    else f"MATLAB exited with returncode:{matlab.returncode}"
-                )
-                return "down"
-
-        # For windows platform
-        else:
-            if matlab is None or not matlab.is_running():
-                logger.debug(
-                    "MATLAB has not started"
-                    if matlab is None
-                    else f"MATLAB exited with returncode:{matlab.wait()}"
-                )
-                return "down"
-
-        if not self.matlab_session_files["matlab_ready_file"].exists():
-            return "starting"
+        # Return matlab status as "down" if the processes validation fails
+        if not self._are_required_processes_ready():
+            return "down"
 
         # If execution reaches here, it implies that:
         # 1) MATLAB process has started.
         # 2) Embedded connector has not started yet.
+        return await self._get_matlab_connector_status()
+
+    def _are_required_processes_ready(
+        self, matlab_process=None, xvfb_process=None
+    ) -> bool:
+        # Update the processes to what is tracked in the instance's processes if a None is received
+        if matlab_process is None:
+            matlab_process = self.processes["matlab"]
+        if xvfb_process is None:
+            xvfb_process = self.processes["xvfb"]
+
+        if system.is_linux():
+            if xvfb_process is None or xvfb_process.returncode is not None:
+                logger.debug(
+                    "Xvfb has not started"
+                    if xvfb_process is None
+                    else f"Xvfb exited with returncode:{xvfb_process.returncode}"
+                )
+                return False
+
+            if matlab_process is None or matlab_process.returncode is not None:
+                logger.debug(
+                    "MATLAB has not started"
+                    if matlab_process is None
+                    else f"MATLAB exited with returncode:{matlab_process.returncode}"
+                )
+                return False
+
+        elif system.is_mac():
+            if matlab_process is None or matlab_process.returncode is not None:
+                logger.debug(
+                    "MATLAB has not started"
+                    if matlab_process is None
+                    else f"MATLAB exited with returncode:{matlab_process.returncode}"
+                )
+                return False
+
+        # For windows platform
+        else:
+            if matlab_process is None or not matlab_process.is_running():
+                logger.debug(
+                    "MATLAB has not started"
+                    if matlab_process is None
+                    else f"MATLAB exited with returncode:{matlab_process.wait()}"
+                )
+                return False
+
+        return True
+
+    def _get_token_auth_headers(self) -> Optional[dict]:
+        """Returns token info as headers if authentication is enabled.
+
+        Returns:
+            [Dict | None]: Returns token authentication headers if any.
+        """
+        return (
+            {self.settings["mwi_auth_token_name"]: self.settings["mwi_auth_token_hash"]}
+            if self.settings["mwi_is_token_auth_enabled"]
+            else None
+        )
+
+    async def _get_matlab_connector_status(self) -> str:
+        """Returns the status of MATLABs Embedded Connector.
+
+        Returns:
+            str: Returns any of "up", "down" or "starting" indicating the status of Embedded Connector.
+        """
+        if not self.matlab_session_files["matlab_ready_file"].exists():
+            return "starting"
+
         # Proceed to query the Embedded Connector about its state.
         # matlab-proxy sends a request to itself to the endpoint: /messageservice/json/state
         # which the server redirects to the matlab_view() function to handle (which then sends the request to EC)
         # As the matlab_view is now a protected endpoint, we need to pass token information through headers.
 
         # Include token information into the headers if authentication is enabled.
-        headers = (
-            {self.settings["mwi_auth_token_name"]: self.settings["mwi_auth_token_hash"]}
-            if self.settings["mwi_is_token_auth_enabled"]
-            else None
-        )
+        headers = self._get_token_auth_headers()
 
         embedded_connector_status = await mwi.embedded_connector.request.get_state(
             mwi_server_url=self.settings["mwi_server_url"],
@@ -297,16 +335,16 @@ class AppState:
         self.embedded_connector_state = embedded_connector_status
 
         if self.embedded_connector_state == "down":
-            # So, even if the embedded connector's status is 'down', we'll
-            # return matlab status as 'starting', because the MATLAB process itself has been created
-            # and matlab-proxy is waiting for the embedded connector to start serving content.
+            # Even if the embedded connector's status is 'down', we return matlab status as
+            # 'starting' because the MATLAB process itself has been created and matlab-proxy
+            # is waiting for the embedded connector to start serving content.
             matlab_status = "starting"
 
             # Update time stamp when MATLAB state is "starting".
             if not self.embedded_connector_start_time:
                 self.embedded_connector_start_time = time.time()
 
-        # Embedded connector is also up, so set matlab_status to "up"
+        # Set matlab_status to "up" since embedded connector is up.
         else:
             matlab_status = "up"
 
@@ -373,6 +411,10 @@ class AppState:
             }
             log_error(logger, e)
 
+        except UIVisibleFatalError as e:
+            self.error = e
+            log_error(logger, e)
+
     def unset_licensing(self):
         """Unset the licensing."""
 
@@ -388,12 +430,12 @@ class AppState:
         Returns:
             Boolean: True if MATLAB is Licensed. False otherwise.
         """
-
         if self.licensing is not None:
-            if self.licensing["type"] == "nlm":
-                if self.licensing["conn_str"] is not None:
+            logger.debug(f"Licensing type: {self.licensing.get('type')}")
+            if self.licensing.get("type") == "nlm":
+                if self.licensing.get("conn_str") is not None:
                     return True
-            elif self.licensing["type"] == "mhlm":
+            elif self.licensing.get("type") == "mhlm":
                 if (
                     self.licensing.get("identity_token") is not None
                     and self.licensing.get("source_id") is not None
@@ -401,7 +443,7 @@ class AppState:
                     and self.licensing.get("entitlement_id") is not None
                 ):
                     return True
-            elif self.licensing["type"] == "existing_license":
+            elif self.licensing.get("type") == "existing_license":
                 return True
         return False
 
@@ -417,6 +459,17 @@ class AppState:
         if self.licensing is None or self.licensing["type"] != "mhlm":
             raise FatalError(
                 "MHLM licensing must be configured to update entitlements!"
+            )
+
+        # TODO: Updating entitlements requires the matlab version. If it
+        # could not be determined at server startup, take input from the user
+        # for the MATLAB version they intend to start and update settings.
+
+        # As MHLM licensing requires matlab version to update entitlements, if it couldn't be determined
+        # for now show an error to the user to set MWI_CUSTOM_MATLAB_ROOT env var.
+        if self.settings["matlab_version"] is None:
+            raise UIVisibleFatalError(
+                f"Could not find {VERSION_INFO_FILE_NAME} file at MATLAB root. Set {mwi_env.get_env_name_custom_matlab_root()} to a valid MATLAB root path"
             )
 
         try:
@@ -496,7 +549,7 @@ class AppState:
     def create_logs_dir_for_MATLAB(self):
         """Creates the root folder where MATLAB writes the ready file and updates attibutes on self."""
 
-        # NOTE It is not guranteed that the port will remain free!
+        # NOTE It is not guaranteed that the port will remain free!
         # FIXME Because of https://github.com/http-party/node-http-proxy/issues/1342 the
         # node application in development mode always uses port 31515 to bypass the
         # reverse proxy. Once this is addressed, remove this special case.
@@ -629,7 +682,26 @@ class AppState:
         # Env setup related to logging
         # Very verbose logging in debug mode
         if logger.isEnabledFor(logging.getLevelName("DEBUG")):
-            matlab_env["MW_DIAGNOSTIC_DEST"] = "stdout"
+            mwi_log_file = self.settings.get("mwi_log_file", None)
+            # If a log file is supplied to write matlab-proxy server logs,
+            # use it to write MATLAB logs too.
+            if mwi_log_file:
+                # Append MATLAB logs to matlab-proxy logs
+                matlab_env["MW_DIAGNOSTIC_DEST"] = f"file,append={mwi_log_file}"
+
+            elif system.is_posix():
+                matlab_env["MW_DIAGNOSTIC_DEST"] = "stdout"
+
+            else:
+                # On windows stdout is not supported yet.
+                # So, use the default log file for MATLAB logs
+                matlab_logs_file = self.mwi_logs_dir / MATLAB_LOGS_FILE_NAME
+                # Write MATLAB logs
+                matlab_env["MW_DIAGNOSTIC_DEST"] = f"file={matlab_logs_file}"
+
+            logger.info(
+                f"Writing MATLAB process logs to: {matlab_env['MW_DIAGNOSTIC_DEST']}"
+            )
             matlab_env[
                 "MW_DIAGNOSTIC_SPEC"
             ] = "connector::http::server=all;connector::lifecycle=all"
@@ -737,6 +809,139 @@ class AppState:
         # If something went wrong in starting matlab, return None
         return None
 
+    async def __force_stop_matlab(self, error, task):
+        """A private method to update self.error and force stop matlab"""
+        self.error = MatlabError(error)
+        logger.error(f"{task}: {error}")
+
+        # If force_quit is not set to True, stop_matlab() would try to
+        # send a HTTP request to the Embedded Connector (which is already "down")
+        await self.stop_matlab(force_quit=True)
+
+    async def __track_embedded_connector_state(self):
+        """track_embedded_connector_state is an asyncio task to track the status of MATLAB Embedded Connector.
+        This task will start and stop with the MATLAB process.
+        """
+        this_task = "track_embedded_connector_state:"
+        logger.debug(f"{this_task}: Starting task...")
+
+        while True:
+            if self.embedded_connector_state == "up":
+                logger.debug(
+                    f"{this_task}: MATLAB Embedded Connector is up, not checking for any errors in MATLABs stderr pipe. Sleeping for 10 seconds..."
+                )
+                # Embedded connector is up, sleep for 10 seconds and recheck again
+                await asyncio.sleep(10)
+                continue
+
+            # Embedded connector is down, so check for how long it has been down and error out if necessary
+            # embedded_connector_start_time variable is updated by get_matlab_state().
+            else:
+                # If its not yet set, sleep for 1 second and recheck again
+                if not self.embedded_connector_start_time:
+                    await asyncio.sleep(1)
+                    continue
+
+                else:
+                    time_diff = time.time() - self.embedded_connector_start_time
+                    if time_diff > self.PROCESS_TIMEOUT:
+                        # Since max allowed startup time has elapsed, it means that MATLAB is in a stuck state and cannot be launched.
+                        # Set the error and stop matlab.
+                        user_visible_error = "Unable to start MATLAB.\nTry again by clicking Start MATLAB."
+
+                        if system.is_windows():
+                            # In WINDOWS systems, errors are raised as UI windows and cannot be captured programmatically.
+                            # So, raise a generic error wherever appropriate
+                            generic_error = f"MATLAB did not start in {int(self.PROCESS_TIMEOUT)} seconds. Use Windows Remote Desktop to check for any errors."
+                            logger.error(f":{this_task}: {generic_error}")
+                            if len(self.logs["matlab"]) == 0:
+                                await self.__force_stop_matlab(
+                                    user_visible_error, this_task
+                                )
+                                # Breaking out of the loop to end this task as matlab-proxy was unable to launch MATLAB successfully
+                                # even after waiting for self.PROCESS_TIMEOUT
+                                break
+                            else:
+                                # Do not stop the MATLAB process or break from the loop (the error type is unknown)
+                                self.error = MatlabError(generic_error)
+                                await asyncio.sleep(5)
+                                continue
+
+                        else:
+                            # If there are no logs after the max startup time has elapsed, it means that MATLAB is in a stuck state and cannot be launched.
+                            # Set the error and stop matlab.
+                            logger.error(
+                                f":{this_task}: MATLAB did not start in {int(self.PROCESS_TIMEOUT)} seconds!"
+                            )
+                            if len(self.logs["matlab"]) == 0:
+                                await self.__force_stop_matlab(
+                                    user_visible_error, this_task
+                                )
+                                # Breaking out of the loop to end this task as matlab-proxy was unable to launch MATLAB successfully
+                                # even after waiting for self.PROCESS_TIMEOUT
+                                break
+
+                    else:
+                        logger.debug(
+                            f"{this_task}: MATLAB has been in a 'starting' state for {int(time_diff)} seconds. Sleeping for 1 second..."
+                        )
+                        await asyncio.sleep(1)
+
+    async def __matlab_stderr_reader_posix(self):
+        """matlab_stderr_reader_posix is an asyncio task which reads the stderr pipe of the MATLAB process, parses it
+        and updates state variables accordingly.
+        """
+        if system.is_posix():
+            matlab = self.processes["matlab"]
+            logger.debug("matlab_stderr_reader_posix() task: Starting task...")
+
+            while not matlab.stderr.at_eof():
+                logger.debug(
+                    "matlab_stderr_reader_posix() task: Waiting to read data from stderr pipe..."
+                )
+                line = await matlab.stderr.readline()
+                if line is None:
+                    logger.debug(
+                        "matlab_stderr_reader_posix() task: Received data from stderr pipe appending to logs..."
+                    )
+                    break
+                self.logs["matlab"].append(line)
+            await self.handle_matlab_output()
+
+    async def __update_matlab_port(self, delay: int):
+        """Task to populate matlab_port from the matlab ready file. Times out if max_duration is breached
+
+        Args:
+            delay (int): time delay in seconds before retrying the file read operation
+        """
+        logger.debug(
+            f'updating matlab_port information from {self.matlab_session_files["matlab_ready_file"]}'
+        )
+        try:
+            await asyncio.wait_for(
+                self.__read_matlab_ready_file(delay),
+                self.PROCESS_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.debug(
+                "Timeout error received while updating matlab port, stopping matlab!"
+            )
+            await self.stop_matlab(force_quit=True)
+            self.error = MatlabError(
+                "Unable to start MATLAB because of a timeout. Try again by clicking Start MATLAB."
+            )
+
+    async def __read_matlab_ready_file(self, delay):
+        # reads with delays from the file where connector has written its port information
+        while not self.matlab_session_files["matlab_ready_file"].exists():
+            await asyncio.sleep(delay)
+
+        with open(self.matlab_session_files["matlab_ready_file"]) as f:
+            self.matlab_port = int(f.read())
+            logger.debug(
+                f"MATLAB Ready file successfully read, matlab_port set to: {self.matlab_port}"
+            )
+
     async def start_matlab(self, restart_matlab=False):
         """Start MATLAB.
 
@@ -798,148 +1003,16 @@ class AppState:
         logger.debug(f"Started MATLAB (PID={matlab.pid})")
         self.processes["matlab"] = matlab
 
-        async def __track_embedded_connector_state():
-            """track_embedded_connector_state is an asyncio task to track the status of MATLAB Embedded Connector.
-            This task will start and stop with the MATLAB process.
-            """
-            this_task = "track_embedded_connector_state:"
-            logger.debug(f"{this_task}: Starting task...")
-
-            while True:
-                if self.embedded_connector_state == "up":
-                    logger.debug(
-                        f"{this_task}: MATLAB Embedded Connector is up, not checking for any errors in MATLABs stderr pipe. Sleeping for 10 seconds..."
-                    )
-                    # Embedded connector is up, sleep for 10 seconds and recheck again
-                    await asyncio.sleep(10)
-                    continue
-
-                # Embedded connector is down, so check for how long it has been down and error out if necessary
-                # embedded_connector_start_time variable is updated by get_matlab_state().
-                else:
-                    # If its not yet set, sleep for 1 second and recheck again
-                    if not self.embedded_connector_start_time:
-                        await asyncio.sleep(1)
-                        continue
-
-                    else:
-                        time_diff = time.time() - self.embedded_connector_start_time
-                        if (
-                            time_diff
-                            > self.EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS
-                        ):
-                            # Since max allowed startup time has elapsed, it means that MATLAB is in a stuck state and cannot be launched.
-                            # Set the error and stop matlab.
-                            user_visible_error = "Unable to start MATLAB.\nTry again by clicking Start MATLAB."
-
-                            async def __force_stop_matlab(error):
-                                """A private method to update self.error and force stop matlab"""
-                                self.error = MatlabError(error)
-                                logger.error(f"{this_task}: {error}")
-
-                                # If force_quit is not set to True, stop_matlab() would try to
-                                # send a HTTP request to the Embedded Connector (which is already "down")
-                                await self.stop_matlab(force_quit=True)
-
-                            if system.is_windows():
-                                # In WINDOWS systems, errors are raised as UI windows and cannot be captured programmatically.
-                                # So, raise a generic error wherever appropriate
-                                generic_error = f"MATLAB did not start in {int(self.EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS)} seconds. Use Windows Remote Desktop to check for any errors."
-                                logger.error(f":{this_task}: {generic_error}")
-                                if len(self.logs["matlab"]) == 0:
-                                    await __force_stop_matlab(user_visible_error)
-                                    # Breaking out of the loop to end this task as matlab-proxy was unable to launch MATLAB successfully
-                                    # even after waiting for EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS
-                                    break
-                                else:
-                                    # Do not stop the MATLAB process or break from the loop (the error type is unknown)
-                                    self.error = MatlabError(generic_error)
-                                    await asyncio.sleep(5)
-                                    continue
-
-                            else:
-                                # If there are no logs after the max startup time has elapsed, it means that MATLAB is in a stuck state and cannot be launched.
-                                # Set the error and stop matlab.
-                                logger.error(
-                                    f":{this_task}: MATLAB did not start in {int(self.EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS)} seconds!"
-                                )
-                                if len(self.logs["matlab"]) == 0:
-                                    await __force_stop_matlab(user_visible_error)
-                                    # Breaking out of the loop to end this task as matlab-proxy was unable to launch MATLAB successfully
-                                    # even after waiting for EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS
-                                    break
-
-                        else:
-                            logger.debug(
-                                f"{this_task}: MATLAB has been in a 'starting' state for {int(time_diff)} seconds. Sleeping for 1 second..."
-                            )
-                            await asyncio.sleep(1)
-
-        async def __matlab_stderr_reader_posix():
-            """matlab_stderr_reader_posix is an asyncio task which reads the stderr pipe of the MATLAB process, parses it
-            and updates state variables accordingly.
-            """
-            if system.is_posix():
-                matlab = self.processes["matlab"]
-                logger.debug("matlab_stderr_reader_posix() task: Starting task...")
-
-                while not matlab.stderr.at_eof():
-                    logger.debug(
-                        "matlab_stderr_reader_posix() task: Waiting to read data from stderr pipe..."
-                    )
-                    line = await matlab.stderr.readline()
-                    if line is None:
-                        logger.debug(
-                            "matlab_stderr_reader_posix() task: Received data from stderr pipe appending to logs..."
-                        )
-                        break
-                    self.logs["matlab"].append(line)
-                await self.handle_matlab_output()
-
-        async def __update_matlab_port(delay: int):
-            """Task to populate matlab_port from the matlab ready file. Times out if max_duration is breached
-
-            Args:
-                delay (int): time delay in seconds before retrying the file read operation
-            """
-            logger.debug(
-                f'updating matlab_port information from {self.matlab_session_files["matlab_ready_file"]}'
-            )
-            try:
-                await asyncio.wait_for(
-                    __read_matlab_ready_file(delay),
-                    self.EMBEDDED_CONNECTOR_MAX_STARTUP_DURATION_IN_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                logger.debug(
-                    "Timeout error received while updating matlab port, stopping matlab!"
-                )
-                await self.stop_matlab(force_quit=True)
-                self.error = MatlabError(
-                    "Unable to start MATLAB because of a timeout. Try again by clicking Start MATLAB."
-                )
-
-        async def __read_matlab_ready_file(delay):
-            # reads with delays from the file where connector has written its port information
-            while not self.matlab_session_files["matlab_ready_file"].exists():
-                await asyncio.sleep(delay)
-
-            with open(self.matlab_session_files["matlab_ready_file"]) as f:
-                self.matlab_port = int(f.read())
-                logger.debug(
-                    f"MATLAB Ready file successfully read, matlab_port set to: {self.matlab_port}"
-                )
-
         loop = util.get_event_loop()
         # Start all tasks relevant to MATLAB process
         self.tasks["matlab_stderr_reader_posix"] = loop.create_task(
-            __matlab_stderr_reader_posix()
+            self.__matlab_stderr_reader_posix()
         )
         self.tasks["track_embedded_connector_state"] = loop.create_task(
-            __track_embedded_connector_state()
+            self.__track_embedded_connector_state()
         )
         self.tasks["update_matlab_port"] = loop.create_task(
-            __update_matlab_port(self.MATLAB_PORT_CHECK_DELAY_IN_SECONDS)
+            self.__update_matlab_port(self.MATLAB_PORT_CHECK_DELAY_IN_SECONDS)
         )
 
     """
@@ -965,7 +1038,7 @@ class AppState:
             except asyncio.CancelledError:
                 pass
         If the request fails, the server process exits with error code 1.
-        
+
         url = self.settings["mwi_server_url"] + "/terminate_integration"
 
         try:
@@ -983,7 +1056,7 @@ class AppState:
                 await matlab.wait()
             except:
                 logger.info(
-                    f"Exception occured during termination of MATLAB process with PID: {matlab.pid}!"
+                    f"Exception occurred during termination of MATLAB process with PID: {matlab.pid}!"
                 )
                 pass
 
@@ -1011,12 +1084,16 @@ class AppState:
 
         try:
             data = mwi.embedded_connector.helpers.get_data_to_eval_mcode("exit")
+            headers = self._get_token_auth_headers()
             url = mwi.embedded_connector.helpers.get_mvm_endpoint(
                 self.settings["mwi_server_url"]
             )
 
             resp_json = await mwi.embedded_connector.send_request(
-                url=url, method="POST", data=data, headers=None
+                url=url,
+                method="POST",
+                data=data,
+                headers=headers,
             )
 
             if resp_json["messages"]["EvalResponse"][0]["isError"]:
@@ -1029,19 +1106,24 @@ class AppState:
 
     async def stop_matlab(self, force_quit=False):
         """Terminate MATLAB."""
+
+        # Fetch matlab state before deleting its session files because
+        # get_matlab_state() checks for the existence of these files in
+        # determining matlab state.
+        matlab_state = await self.get_matlab_state()
+
         # Clean up session files which determine various states of the server &/ MATLAB.
         # Do this first as stopping MATLAB/Xvfb takes longer and may fail
-        try:
-            for _, session_file in self.matlab_session_files.items():
-                if session_file is not None:
+
+        # Files won't exist when stop_matlab is called for the first time.
+        for _, session_file in self.matlab_session_files.items():
+            if session_file is not None:
+                with contextlib.suppress(FileNotFoundError):
                     logger.info(f"Deleting:{session_file}")
                     session_file.unlink()
-        except FileNotFoundError:
-            # Files won't exist when stop_matlab is called for the first time.
-            pass
 
         # In posix systems, variable matlab is an instance of asyncio.subprocess.Process()
-        # In windows systems, variable matlab is an isntance of psutil.Process()
+        # In windows systems, variable matlab is an instance of psutil.Process()
         matlab = self.processes["matlab"]
 
         waiters = []
@@ -1052,7 +1134,7 @@ class AppState:
                 # OR
                 # When force_quit is set to True
                 # directly terminate the MATLAB process instead.
-                if await self.get_matlab_state() == "starting" or force_quit:
+                if matlab_state == "starting" or force_quit:
                     logger.debug("Forcing the MATLAB process to terminate...")
                     matlab.terminate()
                     waiters.append(matlab.wait())
@@ -1084,7 +1166,7 @@ class AppState:
             else:
                 # In a windows system
                 if system.is_windows() and matlab.is_running():
-                    if await self.get_matlab_state() == "starting" or force_quit:
+                    if matlab_state == "starting" or force_quit:
                         matlab.terminate()
                         matlab.wait()
 
