@@ -12,4 +12,4 @@ def find_free_port():
 free_port = find_free_port()
 
 with open(os.path.join(os.path.dirname(__file__),'.env'), 'w') as file:
-    file.write(f"HOST_PORT_FOR_MATLAB_PROXY={free_port}\n")
+    file.write(f"FREE_PORT={free_port}\n")

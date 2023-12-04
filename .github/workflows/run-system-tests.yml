@@ -46,7 +46,7 @@ jobs:
       - name: Find an available port
         working-directory: ./tests/configuration
         run: |
-          python3 -m find_port.py
+          python3 find_port.py
           set -a
           . ./.env
           set +a
