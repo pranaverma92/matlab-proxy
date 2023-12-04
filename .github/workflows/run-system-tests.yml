@@ -1,0 +1,77 @@
+# Copyright 2023 The MathWorks, Inc
+
+# Workflow to run MATLAB-Proxy system tests
+name: Integration testing for MATLAB Proxy
+
+on:
+  # Reusable workflow
+  # Trigger on workflow call
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  playwright_e2e_tests:
+
+    runs-on: ubuntu-latest
+    env:
+        NODE_VERSION: 18
+        PYTHON_VERSION: 3.11
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup MATLAB
+        uses: matlab-actions/setup-matlab@v2-beta
+
+      - name: Setup nodejs
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install wheel
+          python3 -m pip install .[dev]
+
+      - name: Install playwright browsers
+        working-directory: ./tests/system-tests
+        run: npx playwright install --with-deps
+
+      - name: Find an available port
+        working-directory: .tests/configuration
+        run: |
+          python3 -m find_port.py
+          set -a
+          . ./.env
+          set +a
+          env
+
+      - name: Run the Playwright tests
+        working-directory: ./tests/system-tests
+        env:
+            TEST_USERNAME: ${{ secrets.TEST_USERNAME }}
+            TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+        run: |
+            echo "Playwright version: $(npx playwright -V)"
+            npx playwright test
+
+      - name: Zip test results
+        if: always()
+        working-directory: tests/system-tests
+        run: |
+            zip -r zipped-system-tests-results.zip ./playwright-report ./test-results
+
+      - name: Preserve test results after the job has finished
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+            name: system_tests_results
+            path: ./tests/system-tests/zipped-system-tests-results.zip
+            retention-days: 5
