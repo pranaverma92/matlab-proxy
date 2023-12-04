@@ -20,7 +20,12 @@ jobs:
   call-run-unit-tests-r002:
       uses: ./.github/workflows/run-unit-tests.yml
 
-   # Runs integration tests
+  # Runs integration tests
   call-integration-tests:
     uses: ./.github/workflows/run-integration-tests.yml
+    secrets: inherit
+
+  # Runs system tests
+  call-system-tests:
+    uses: ./.github/workflows/run-system-tests.yml
     secrets: inherit
