@@ -43,9 +43,9 @@ jobs:
         working-directory: ./tests/system-tests
         run: npx playwright install --with-deps
 
-    #   - name: Install playwright dependency
-    #     working-directory: ./tests/system-tests
-    #     run: npm install playwright --save-dev
+      - name: Install playwright dependency
+        working-directory: ./tests/system-tests
+        run: npm install playwright
 
       - name: Find an available port
         working-directory: ./tests/configuration
