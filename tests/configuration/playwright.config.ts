@@ -7,7 +7,7 @@ import path from 'path';
  * Read environment variables from .env file present at the root of the project.
  * https://github.com/motdotla/dotenv
  */
-require('dotenv').config({ path: path.resolve(__dirname, './.env') });
+dotenv.config({ path: path.resolve(__dirname, './.env') });
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -39,7 +39,7 @@ export default defineConfig({
     forbidOnly: !!process.env.CI,
 
     /** Retry on CI three times, and locally retry once. */
-    retries: process.env.CI ? 3 : 2,
+    retries: process.env.CI ? 3 : 1,
 
     /** Opt out of parallel tests on CI. */
     workers: process.env.CI ? 1 : 1,
@@ -84,7 +84,7 @@ export default defineConfig({
        * a per-project or per-file basis. Rather than hard coding the base url to be used.
        * See the docker-compose.yaml file for which ports correspond to which container.
       */
-      baseURL: 'http://localhost:'+ process.env.HOST_PORT_FOR_MATLAB_PROXY,
+      baseURL: 'http://localhost:'+ process.env.FREE_PORT,
 
       /** Run the test without showing the browser */
       headless: true,
@@ -116,7 +116,7 @@ export default defineConfig({
     {
         use: {
             ...devices['Desktop Chrome'],
-            baseURL: 'http://localhost:'+ process.env.HOST_PORT_FOR_MATLAB_PROXY
+            baseURL: 'http://localhost:'+ process.env.FREE_PORT
         }
     }
 ]

@@ -1,7 +1,7 @@
 # Copyright 2023 The MathWorks, Inc
 
 # Workflow to run MATLAB-Proxy system tests
-name: Integration testing for MATLAB Proxy
+name: System testing for MATLAB Proxy
 
 on:
   # Reusable workflow
