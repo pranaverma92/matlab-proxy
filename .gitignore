@@ -12,3 +12,4 @@ htmlcov/
 .python-version
 coverage.xml
 tests/system-tests/.env
+tests/system-tests/playwright-report/*
