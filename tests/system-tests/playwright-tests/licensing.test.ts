@@ -21,7 +21,7 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
     });
 
     // Test to check the "Stop MATLAB" Button in the tools icon
-    test('Stop MATLAB Proxy', async({ page }) => {
+    test.only('Stop MATLAB Proxy', async({ page }) => {
         await page.goto('/index.html');
 
         // Stops the MATLAB Session and checks that the status is turned to Not Running
@@ -90,18 +90,6 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
         const startMATLABButton = signInDialog.getByRole('button', { name: 'Start MATLAB' });
         await startMATLABButton.click();
     });
-
-
-
-    // Test to check if the user is able to Sign Out and Sign In back again using the license manager in the tools icon
-    // This test's workflow would need to change since the old workflow of 1@license will no longer work
-    // Commenting this out for the time being
-
-    // test('Test Network License Manager licensing is working', async ({page}) => {
-    //     await page.goto("/index.html");
-    //     await unsetMatlabLicensing(page);
-    //     await setMatlabLicensingInJsdUsingLicenseManager(page);
-    // });
 });
 
 // HELPER FUNCTIONS FOR THE TESTS

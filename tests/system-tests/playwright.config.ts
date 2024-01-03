@@ -1,5 +1,4 @@
 import { defineConfig, devices } from '@playwright/test';
-import { trace } from 'console';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -8,10 +7,10 @@ import path from 'path';
  * https://github.com/motdotla/dotenv
  */
 dotenv.config({ path: path.resolve(__dirname, './.env') });
+const PORT_NUMBER = process.env.FREE_PORT
+const webserverCommand = "env MWI_APP_PORT=" + PORT_NUMBER + " matlab-proxy-app"
 
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
+console.log('Webserver command ', webserverCommand)
 
 export default defineConfig({
     globalSetup: require.resolve('./global-setup'),
@@ -20,10 +19,9 @@ export default defineConfig({
      * Each "project" (defined at the end of the file) can pattern match against
      * the test filenames to select a subset of the files to run.
      */
-    testDir: './../system-tests',
+    testDir: './../playwright-tests',
 
     /** Maximum time one test can run for. */
-    /** This is kept to 60s because time taken by a test sometimes depends on server and network speed */
     timeout: 60 * 1000,
 
     /** Customise the settings for each assertion 'expect' statement. */
@@ -44,14 +42,14 @@ export default defineConfig({
     /** Opt out of parallel tests on CI. */
     workers: process.env.CI ? 1 : 1,
 
-    // webServer: [
-    //     {
-    //         command: 'npx ts-node port_find.ts && ${process.env.MWI_APP_PORT} matlab-proxy-app',
-    //         reuseExistingServer: !process.env.CI,
-    //         stdout: 'ignore',
-    //         stderr: 'pipe',
-    //     },
-    // ]
+    webServer: [
+        {
+            url: 'http://localhost:' + PORT_NUMBER,
+            command: webserverCommand,
+            reuseExistingServer: !process.env.CI,
+            timeout: 600*1000
+        },
+    ],
 
     /** Most JupyterLab tests will be 'slow' in Playwrights eyes. This variable controls whether they are reported. */
     reportSlowTests: null,
@@ -66,13 +64,6 @@ export default defineConfig({
 
         /** Folder for test artifacts such as screenshots, videos, traces, etc. */
     // outputDir: './test-results/artifacts',
-
-    /**
-     * If 'fullyParallel' is set to true, then the tests within a single test file will be run in parallel.
-     * The default value is for this to be set to 'false'. Which means the tests within a test file are
-     * run sequentially in the order they are appear in the file.
-     */
-    // fullyParallel: true,
 
     /**
      * The 'use' setting can be specified globally, per project and per test file.
@@ -116,7 +107,7 @@ export default defineConfig({
     {
         use: {
             ...devices['Desktop Chrome'],
-            baseURL: 'http://localhost:'+ process.env.FREE_PORT
+            baseURL: 'http://localhost:'+ PORT_NUMBER
         }
     }
 ]

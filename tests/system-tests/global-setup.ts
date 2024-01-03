@@ -3,6 +3,7 @@ import { chromium, FullConfig, expect } from '@playwright/test';
 
 async function globalSetup (config: FullConfig) {
     const { baseURL } = config.projects[0].use;
+    console.log("baseURL is ", baseURL)
     const browser = await chromium.launch();
     const page = await browser.newPage();
     await page.goto(baseURL!);
@@ -17,7 +18,7 @@ async function globalSetup (config: FullConfig) {
     await expect(passwordTextbox, 'Wait for password textbox to appear').toBeVisible();
     await passwordTextbox.fill('CPIPassw0rd!');
     await passwordTextbox.press('Enter');
-    await passwordTextbox.press('Enter');
+    // await passwordTextbox.press('Enter');
 
     // Verifies if licensing is successful by checking the status information
     const statusInfo = page.getByText('Status Information');
