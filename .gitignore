@@ -11,3 +11,4 @@ htmlcov/
 *.pem
 .python-version
 coverage.xml
+tests/system-tests/.env
