@@ -75,7 +75,7 @@ export default defineConfig({
        * a per-project or per-file basis. Rather than hard coding the base url to be used.
        * See the docker-compose.yaml file for which ports correspond to which container.
       */
-      baseURL: 'http://localhost:'+ process.env.FREE_PORT,
+      baseURL: 'http://localhost:'+ PORT_NUMBER,
 
       /** Run the test without showing the browser */
       headless: true,
