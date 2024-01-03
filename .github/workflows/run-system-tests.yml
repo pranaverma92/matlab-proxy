@@ -4,6 +4,8 @@
 name: System testing for MATLAB Proxy
 
 on:
+  # Reusable workflow
+  # Trigger on workflow call
   workflow_dispatch:
   workflow_call:
 
