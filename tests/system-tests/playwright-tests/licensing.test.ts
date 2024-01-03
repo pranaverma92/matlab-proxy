@@ -21,7 +21,7 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
     });
 
     // Test to check the "Stop MATLAB" Button in the tools icon
-    test.only('Stop MATLAB Proxy', async({ page }) => {
+    test('Stop MATLAB Proxy', async({ page }) => {
         await page.goto('/index.html');
 
         // Stops the MATLAB Session and checks that the status is turned to Not Running

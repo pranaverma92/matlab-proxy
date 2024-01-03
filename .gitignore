@@ -13,3 +13,4 @@ htmlcov/
 coverage.xml
 tests/system-tests/.env
 tests/system-tests/playwright-report/*
+tests/system-tests/test-results/
