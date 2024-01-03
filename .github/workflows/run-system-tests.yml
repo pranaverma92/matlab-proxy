@@ -4,11 +4,10 @@
 name: System testing for MATLAB Proxy
 
 on:
-  # Reusable workflow
-  # Trigger on workflow call
-  workflow_dispatch:
-  workflow_call:
-
+    push:
+        branches:
+            - system-tests
+    workflow_dispatch:
 jobs:
   playwright_e2e_tests:
 
