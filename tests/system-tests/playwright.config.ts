@@ -7,7 +7,7 @@ import path from 'path';
  * https://github.com/motdotla/dotenv
  */
 dotenv.config({ path: path.resolve(__dirname, './.env') });
-const PORT_NUMBER = process.env.FREE_PORT
+const PORT_NUMBER = process.env.TEST_MP_PORT
 const webserverCommand = "env MWI_APP_PORT=" + PORT_NUMBER + " matlab-proxy-app"
 
 console.log('Webserver command ', webserverCommand)

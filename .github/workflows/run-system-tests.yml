@@ -51,7 +51,7 @@ jobs:
         run: |
           FREE_PORT=$(python -c 'import socket; s=socket.socket(); s.bind(("", 0)); print(s.getsockname()[1]); s.close()');
           echo "Using port = ${FREE_PORT}"
-          echo "TEST_JMP_PORT=$FREE_PORT" >> "$GITHUB_ENV"
+          echo "TEST_MP_PORT=$FREE_PORT" >> "$GITHUB_ENV"
 
       - name: Run the Playwright tests
         working-directory: ./tests/system-tests
