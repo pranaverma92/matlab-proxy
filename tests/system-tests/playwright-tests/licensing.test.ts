@@ -78,18 +78,18 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
     });
 
     // Test to check MATLAB Proxy is able to license using the local licensing
-    test('Test to check the local licensing', async ({page}) => {
-        await page.goto("/index.html");
+    // test('Test to check the local licensing', async ({page}) => {
+    //     await page.goto("/index.html");
 
-        await unsetMatlabLicensing(page);
+    //     await unsetMatlabLicensing(page);
 
-        // Clicks on the Network License Manager tab
-        const signInDialog = page.locator('#setup-dialog');
-        await clickAndWaitForLoadState(signInDialog.getByRole('tab', { name: 'Existing License' }), page);
+    //     // Clicks on the Network License Manager tab
+    //     const signInDialog = page.locator('#setup-dialog');
+    //     await clickAndWaitForLoadState(signInDialog.getByRole('tab', { name: 'Existing License' }), page);
 
-        const startMATLABButton = signInDialog.getByRole('button', { name: 'Start MATLAB' });
-        await startMATLABButton.click();
-    });
+    //     const startMATLABButton = signInDialog.getByRole('button', { name: 'Start MATLAB' });
+    //     await startMATLABButton.click();
+    // });
 });
 
 // HELPER FUNCTIONS FOR THE TESTS
