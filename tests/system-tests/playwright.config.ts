@@ -19,7 +19,7 @@ export default defineConfig({
      * Each "project" (defined at the end of the file) can pattern match against
      * the test filenames to select a subset of the files to run.
      */
-    testDir: './../playwright-tests',
+    testDir: './playwright-tests',
 
     /** Maximum time one test can run for. */
     timeout: 60 * 1000,
