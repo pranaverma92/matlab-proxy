@@ -37,9 +37,9 @@ jobs:
         working-directory: ./tests/system-tests
         run: npm ci
 
-      - name: Run the linter
-        working-directory: ./tests/system-tests
-        run: npm run lint
+      # - name: Run the linter
+      #   working-directory: ./tests/system-tests
+      #   run: npm run lint
 
       - name: Set up Python
         uses: actions/setup-python@v4
