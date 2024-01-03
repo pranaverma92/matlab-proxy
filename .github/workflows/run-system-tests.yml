@@ -26,7 +26,20 @@ jobs:
       - name: Setup nodejs
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install node dependencies
+        working-directory: ./tests/system-tests
+        run: npm ci
+
+      - name: Run the linter
+        working-directory: ./tests/system-tests
+        run: npm run lint
 
       - name: Set up Python
         uses: actions/setup-python@v4
