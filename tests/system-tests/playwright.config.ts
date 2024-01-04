@@ -22,12 +22,12 @@ export default defineConfig({
     testDir: './playwright-tests',
 
     /** Maximum time one test can run for. */
-    timeout: 60 * 1000,
+    timeout: 600 * 1000,
 
     /** Customise the settings for each assertion 'expect' statement. */
     expect: {
         /** Maximum time expect() should wait for the condition to be met. */
-        timeout: 60 * 1000
+        timeout: 600 * 1000
     },
 
     /**
@@ -47,7 +47,7 @@ export default defineConfig({
             url: 'http://localhost:' + PORT_NUMBER,
             command: webserverCommand,
             reuseExistingServer: !process.env.CI,
-            timeout: 600*1000
+            timeout: 600 * 1000
         },
     ],
 

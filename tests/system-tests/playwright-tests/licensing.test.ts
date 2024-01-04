@@ -3,6 +3,9 @@ import {Page, test, expect, Locator} from '@playwright/test';
 // Tests to check the licensing workflow in the MATLAB Proxy UI
 test.describe('MATLAB Proxy tests to check the licensing and start stop workflow', () => {
 
+    const TEST_USERNAME = process.env.TEST_USERNAME
+    const TEST_PASSWORD = process.env.TEST_PASSWORD
+
     // Before each test case, checks if the MATLAB Proxy page is loaded
     test.beforeEach(async ({page}) => {
         // Checks if the MATLAB Proxy page is available
@@ -41,7 +44,7 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
         await unsetMatlabLicensing(page);
 
         // License MATLAB back using Online licensing
-        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'dockeruser@mwcloudtest.com', 'CPIPassw0rd!');
+        await setMatlabLicensingInJsdUsingOnlineLicensing(page, TEST_USERNAME, TEST_PASSWORD);
         await verifyLicensingSuccessful(page);
     });
 
@@ -68,12 +71,12 @@ test.describe('MATLAB Proxy tests to check the licensing and start stop workflow
     test('Test to check if prompt appears for invalid usr credentials', async({page}) => {
         await page.goto("/index.html");
         await unsetMatlabLicensing(page);
-        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'mckeruser@mwcloudtest.com', 'CPIPassw0rd!');
+        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'mockuser@test.com', TEST_PASSWORD);
         const invalidText = page.frameLocator('#loginframe').locator('#errorMessage');
         await expect(invalidText).toHaveText('Invalid Email or Password');
         const invalidEmail = page.frameLocator('#loginframe').locator('#emailUpdate');
         await invalidEmail.click();
-        await setMatlabLicensingInJsdUsingOnlineLicensing(page, 'dockeruser@mwcloudtest.com', 'CPIPassw0rd!');
+        await setMatlabLicensingInJsdUsingOnlineLicensing(page, TEST_USERNAME , TEST_PASSWORD);
         await verifyLicensingSuccessful(page);
     });
 
